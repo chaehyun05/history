@@ -183,6 +183,12 @@ h3{font-size:17px}
 .ask .row{gap:6px}
 .ask .btn{padding:7px 12px;font-size:14px}
 .ask .hint{font-size:12px;color:var(--muted);margin:0;line-height:1.5}
+.roombtn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.roombtn.on{border-color:var(--cel);background:var(--cel-soft)}
+.roombtn.err{border-color:var(--seal);color:var(--seal)}
+.rform{display:flex;gap:8px;flex-wrap:wrap}
+.rform input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:9px 10px;font:inherit;font-size:16px;background:var(--surface);color:var(--ink)}
+.rrecent{display:flex;flex-wrap:wrap;gap:6px}
 .empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r)}
 .wlist{display:grid;gap:8px}
 .witem{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:8px;flex-wrap:wrap}
@@ -196,6 +202,7 @@ h3{font-size:17px}
 
 <header class="top"><div class="top-in">
   <div class="brand">한능검 심화 연습장<small>51–80회</small></div>
+  <button class="roombtn" id="roombtn" type="button" title="기록방에 연결하면 다른 기기에서도 오답 노트·AI 정리 노트가 보여요">☁ 기록방 연결</button>
   <nav class="tabs" aria-label="메뉴">
     <a href="#home" data-nav="home">홈</a>
     <a href="#setup" data-nav="setup">문제 풀기</a>
@@ -207,6 +214,7 @@ h3{font-size:17px}
 <main class="wrap" id="app"><p class="muted">문제를 불러오는 중…</p></main>
 <div id="toast" class="toast" hidden></div>
 
+<script src="supabase-config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
@@ -221,7 +229,7 @@ const app=$('#app');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function store(k,v){try{if(v===undefined){const x=localStorage.getItem(k);return x?JSON.parse(x):null}localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
 let WRONG=store('hn_wrong')||{};
-function saveWrong(){store('hn_wrong',WRONG)}
+function saveWrong(){store('hn_wrong',WRONG);typeof CLOUD!=='undefined'&&CLOUD.queue()}
 function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(t._t);t._t=setTimeout(()=>t.hidden=true,2600)}
 
 async function boot(){
@@ -501,7 +509,7 @@ function viewWrong(){
   const items=Object.entries(WRONG).filter(([id,v])=>map[id]&&!v.fixed).sort((a,b)=>b[1].t-a[1].t);
   const fixed=Object.entries(WRONG).filter(([id,v])=>map[id]&&v.fixed);
   app.innerHTML=`<div class="stack"><h2>오답 노트</h2>
-   <p class="muted" style="margin:0">틀린 문제가 자동으로 모여요. 다시 풀어서 맞히면 '극복한 문제'로 옮겨져요. 이 기기 브라우저에만 저장돼요.</p>
+   <p class="muted" style="margin:0">틀린 문제가 자동으로 모여요. 다시 풀어서 맞히면 '극복한 문제'로 옮겨져요. ${CLOUD.loaded?`기록방 "${esc(CLOUD.name)}"에 저장돼서 다른 기기에서도 보여요.`:'이 기기 브라우저에만 저장돼요. 위쪽 ☁ 기록방에 연결하면 다른 기기에서도 볼 수 있어요.'}</p>
    <div class="ask" data-free><div class="label">따로 공부하다 생긴 질문 · 오답 물어보기</div>
     <textarea placeholder="예) 교재 문제에서 '정혜 공주 묘'를 고구려 양식이라고 했는데 왜 발해 문제에 나와요? / 내가 고른 답: 비변사 설치 → 정답: 훈련도감 설치, 왜 틀렸는지 궁금해요"></textarea>
     <div class="row"><select aria-label="시대" style="padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px"><option value="">시대 선택(선택)</option>${Object.entries(PARTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>${aiButtons()}</div>
@@ -520,7 +528,7 @@ function viewWrong(){
 }
 /* ---------- AI 정리 노트 ---------- */
 let NOTE=Object.assign({parts:[],items:[],saved:[],opt:{flow:1,key:1,mn:1,cmp:1,quiz:0},useWrong:1,ty:'w',p:0},store('hn_note')||{});
-function saveNote(){store('hn_note',NOTE)}
+function saveNote(){store('hn_note',NOTE);typeof CLOUD!=='undefined'&&CLOUD.queue()}
 function notePrompt(){
   const L=[], inc=NOTE.items.filter(x=>!x.off);
   const byP=x=>x.p||99;
@@ -570,7 +578,7 @@ function viewNote(){
   const order=Object.keys(grp).map(Number).sort((a,b)=>(a||99)-(b||99));
   const partSel=(v)=>`<option value="0" ${!v?'selected':''}>시대 모름/선택 안 함</option>${Object.entries(PARTS).map(([k,t])=>`<option value="${k}" ${+k===v?'selected':''}>${t}</option>`).join('')}`;
   app.innerHTML=`<div class="stack"><h2>AI 정리 노트</h2>
-   <p class="muted" style="margin:0">교재·문제집으로 공부하다 틀린 문제와 못 외운 개념을 여기에 모아 두면, AI에게 한꺼번에 "시간 순서로 외우기 쉽게" 정리해 달라고 보낼 수 있어요. 모은 내용은 이 기기 브라우저에 저장돼요.</p>
+   <p class="muted" style="margin:0">교재·문제집으로 공부하다 틀린 문제와 못 외운 개념을 여기에 모아 두면, AI에게 한꺼번에 "시간 순서로 외우기 쉽게" 정리해 달라고 보낼 수 있어요. ${CLOUD.loaded?`모은 내용은 기록방 "${esc(CLOUD.name)}"에 저장돼서 다른 기기에서도 보여요.`:'모은 내용은 이 기기 브라우저에 저장돼요. 위쪽 ☁ 기록방에 연결하면 다른 기기에서도 볼 수 있어요.'}</p>
    <section class="card stack"><h3>1. 지금까지 공부한 범위</h3>
     <div class="chips" id="np">${Object.entries(PARTS).filter(([k])=>k!=='10').map(([k,t])=>`<button class="chip" data-p="${k}" aria-pressed="${N.parts.includes(+k)}">${t}</button>`).join('')}</div></section>
    <section class="card stack"><h3>2. 틀린 문제 · 못 외운 개념 넣기</h3>
@@ -635,7 +643,101 @@ function viewStudy(){
   if(ims.length){const io=new IntersectionObserver(es=>es.forEach(async en=>{if(!en.isIntersecting)return;io.unobserve(en.target);const el=en.target;const [r,n]=el.dataset.im.split('-');const j=await loadImgs(r);if(j&&j[n])el.innerHTML=`<img alt="" src="${j[n]}">`}),{rootMargin:'300px'});ims.forEach(el=>io.observe(el))}
   app.onclick=e=>{const b=e.target.closest('[data-h],[data-q]');if(!b)return;const id=b.dataset.h||b.dataset.q;const q=allQs().find(x=>x.id===id);if(q)openQ(q)};
 }
-boot();
+/* ---------- 기록방(클라우드) : My Plan과 같은 Supabase 기록방, 이름 앞에 다른 값을 붙여 별도 칸에 저장 ---------- */
+const CLOUD=(()=>{
+  const cfg=window.MYPLAN_CONFIG||{}, ROOM='myhistory-room-name', RECENT='myplan-recent-rooms';
+  let key=null,name='',revision=0,dirty=false,saving=false,timer=null,loaded=false,state='',mode=store('myhistory-cloud-mode')==='alt'?'alt':'main';
+  async function rpc(fn,args){
+    const c=new AbortController(),to=setTimeout(()=>c.abort(),15000);
+    try{
+      const r=await fetch(cfg.url.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:cfg.key,'Content-Type':'application/json'},body:JSON.stringify(args),signal:c.signal});
+      const t=await r.text();let d=null;try{d=t?JSON.parse(t):null}catch(e){throw Error('서버 응답 오류 (HTTP '+r.status+')')}
+      if(!r.ok)throw Error((d&&d.code||r.status)+': '+(d&&d.message||t));
+      return d;
+    }catch(e){if(e.name==='AbortError')throw Error('서버 응답이 15초 이상 늦어요');if(/Failed to fetch|Load failed|NetworkError/.test(e.message))throw Error('서버에 연결하지 못했어요. 인터넷 연결을 확인하세요');throw e}
+    finally{clearTimeout(to)}
+  }
+  async function hash(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('myplan-history-v1:'+s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+  const snap=()=>({kind:'myhistory',v:1,wrong:WRONG,note:NOTE});
+  function pack(){const j=JSON.stringify(snap()),base={'myplan-data-v2':null,'myplan-meals-v1':null,'myplan-habits-v1':null};return mode==='alt'?{...base,'myplan-data-v2':j}:{...base,'myplan-history-v1':j}}
+  function unpack(p){if(!p)return null;for(const k of ['myplan-history-v1','myplan-data-v2']){const v=p[k];if(typeof v!=='string')continue;try{const d=JSON.parse(v);if(d&&d.kind==='myhistory'){if(k==='myplan-data-v2')mode='alt';return d}}catch(e){}}return null}
+  // 두 기록 합치기: 오답은 문항별 최신, 노트 항목·보관함은 합집합
+  function merge(a,b){
+    const w={...(a.wrong||{})};for(const [k,v] of Object.entries(b.wrong||{})){const x=w[k];if(!x||((v.fixed||v.t||0)>(x.fixed||x.t||0)))w[k]=v}
+    const na=a.note||{},nb=b.note||{},n={...nb,...na};
+    const uni=(x,y,f)=>{const m=new Map();[...(x||[]),...(y||[])].forEach(i=>{const k=f(i);if(!m.has(k))m.set(k,i)});return [...m.values()]};
+    n.items=uni(na.items,nb.items,i=>i.at+'|'+i.txt);n.saved=uni(na.saved,nb.saved,i=>i.at+'|'+i.title).sort((p,q)=>q.at-p.at);
+    n.parts=[...new Set([...(na.parts||[]),...(nb.parts||[])])];
+    return {wrong:w,note:n};
+  }
+  function apply(d){WRONG=d.wrong||{};NOTE=Object.assign({parts:[],items:[],saved:[],opt:{flow:1,key:1,mn:1,cmp:1,quiz:0},useWrong:1,ty:'w',p:0},d.note||{});store('hn_wrong',WRONG);store('hn_note',NOTE)}
+  function setState(t,kind){state=t;const b=$('#roombtn');if(!b)return;b.textContent=loaded?'☁ '+name:'☁ 기록방 연결';b.className='roombtn'+(kind==='err'?' err':loaded?' on':'');b.title=t||b.title;const st=document.getElementById('rstat');if(st)st.textContent=t}
+  async function read(){const d=await rpc('read_shared_planner',{p_key:key});return {revision:d?d.revision:0,data:d?unpack(d.payload):null}}
+  async function save(){
+    if(!dirty||!loaded||saving)return;saving=true;setState('저장 중…');
+    const before=JSON.stringify(snap());
+    try{
+      let rev;
+      try{rev=await rpc('save_shared_planner',{p_key:key,p_payload:pack(),p_expected:revision})}
+      catch(e){
+        if(e.message.includes('CONFLICT')){const r=await read();apply(merge(snap(),r.data||{}));revision=r.revision;rev=await rpc('save_shared_planner',{p_key:key,p_payload:pack(),p_expected:revision});rerender()}
+        else if(mode==='main'){mode='alt';store('myhistory-cloud-mode','alt');rev=await rpc('save_shared_planner',{p_key:key,p_payload:pack(),p_expected:revision})}
+        else throw e;
+      }
+      revision=rev;dirty=before!==JSON.stringify(snap());setState(dirty?'추가 변경 저장 대기 중…':'클라우드 저장 완료');if(dirty)timer=setTimeout(save,800);
+    }catch(e){setState('저장 실패: '+e.message+' (이 기기에는 저장돼 있어요)','err')}
+    finally{saving=false}
+  }
+  function queue(){if(!loaded)return;dirty=true;setState('저장 대기 중…');clearTimeout(timer);timer=setTimeout(save,700)}
+  async function open(n){
+    n=String(n||'').normalize('NFC').trim();
+    if(n.length<2||n.length>80)throw Error('기록방 이름은 2~80자로 입력하세요');
+    if(!cfg.url||!cfg.key)throw Error('supabase-config.js 설정이 없어요');
+    key=await hash(n);
+    const r=await read();
+    const local={wrong:WRONG,note:NOTE},hasLocal=Object.keys(WRONG).length||NOTE.items.length||NOTE.saved.length;
+    revision=r.revision;name=n;loaded=true;
+    const merged=r.data?(hasLocal&&store(ROOM)!==n?merge(r.data,local):r.data):local;
+    apply(merged);
+    store(ROOM,n);remember(n);
+    if(!r.data||JSON.stringify({wrong:r.data.wrong,note:r.data.note})!==JSON.stringify({wrong:WRONG,note:NOTE})){dirty=true;save()}
+    setState(n.length<8?'연결됨 · 이름이 짧으면 남이 짐작하기 쉬워요':'클라우드 연결됨');
+    rerender();
+  }
+  async function refresh(){
+    if(!loaded||saving||dirty)return;
+    if([...document.querySelectorAll('#app textarea')].some(t=>t.value.trim())||document.querySelector('.modal'))return;
+    try{const r=await read();if(r.revision>revision){revision=r.revision;if(r.data){apply(r.data);rerender();setState('다른 기기의 변경을 반영했어요')}}}catch(e){}
+  }
+  function leave(){clearTimeout(timer);loaded=false;key=null;name='';dirty=false;try{localStorage.removeItem(ROOM)}catch(e){}WRONG={};NOTE=Object.assign({parts:[],items:[],saved:[],opt:{flow:1,key:1,mn:1,cmp:1,quiz:0},useWrong:1,ty:'w',p:0});store('hn_wrong',WRONG);store('hn_note',NOTE);setState('');rerender()}
+  function rerender(){const h=(location.hash||'#home').slice(1);if(['home','wrong','note'].includes(h)||h===''){const y=scrollY;route();scrollTo(0,y)}}
+  function recent(){try{const l=JSON.parse(localStorage.getItem(RECENT)||'[]');return Array.isArray(l)?l.filter(r=>r&&r.name).sort((a,b)=>(b.last||0)-(a.last||0)):[]}catch(e){return []}}
+  function remember(n){try{const l=recent();const i=l.findIndex(r=>r.name===n);const it=i>=0?l.splice(i,1)[0]:{name:n,sites:[]};it.last=Date.now();it.sites=Array.isArray(it.sites)?it.sites:[];if(!it.sites.includes('history'))it.sites.push('history');l.unshift(it);localStorage.setItem(RECENT,JSON.stringify(l.slice(0,12)))}catch(e){}}
+  function dialog(){
+    const rec=recent(),pre=store(ROOM)||localStorage.getItem('myplan-room-name')||'';
+    showModal(`<h2 style="font-size:20px">☁ 기록방</h2>
+      ${loaded?`<p style="margin:0">지금 <strong>${esc(name)}</strong> 기록방에 연결돼 있어요. 오답 노트와 AI 정리 노트가 저장돼서, 다른 기기·브라우저에서 같은 이름을 넣으면 그대로 보여요.</p><p class="muted" id="rstat" style="margin:0;font-size:13px">${esc(state)}</p>
+        <div class="row"><button class="btn" id="rsync">지금 동기화</button><button class="btn ghost" id="rleave">이 기기에서 나가기</button></div>`
+      :`<p style="margin:0">기록방 이름을 넣으면 오답 노트와 AI 정리 노트가 클라우드에 저장돼요. 다른 기기·브라우저에서 같은 이름을 넣으면 그대로 이어서 볼 수 있어요. My Plan에서 쓰는 이름을 그대로 써도 되고, 기록은 서로 섞이지 않아요.</p>
+        <form class="rform" id="rform"><input id="rname" autocomplete="off" placeholder="기록방 이름 (남이 짐작하기 어렵게)" value="${esc(pre)}" aria-label="기록방 이름"><button class="btn primary">연결</button></form>
+        ${rec.length?`<div class="stack" style="gap:6px"><span class="muted" style="font-size:13px">이 기기에서 열었던 기록방</span><div class="rrecent">${rec.map(r=>`<button class="chip" data-rn="${esc(r.name)}">${esc(r.name)}</button>`).join('')}</div></div>`:''}
+        <p class="muted" id="rstat" style="margin:0;font-size:13px"></p>
+        <p class="muted" style="margin:0;font-size:12px">이름이 곧 열쇠예요. 같은 이름을 넣은 사람은 누구나 볼 수 있으니 짧거나 흔한 이름은 피하세요. 이 기기에 있던 오답·노트는 처음 연결할 때 기록방에 합쳐져요.</p>`}`);
+    const box=document.querySelector('.modal:last-child');
+    const go=async n=>{const st=$('#rstat');const btn=box.querySelector('#rform button');if(btn)btn.disabled=true;if(st)st.textContent='기록방 불러오는 중…';
+      try{await open(n);box.remove();toast(`"${n}" 기록방에 연결했어요`)}catch(e){if(st)st.textContent='열지 못했어요: '+e.message;if(btn)btn.disabled=false}};
+    box.querySelector('#rform')&&(box.querySelector('#rform').onsubmit=e=>{e.preventDefault();go($('#rname').value)});
+    box.querySelectorAll('[data-rn]').forEach(b=>b.onclick=()=>go(b.dataset.rn));
+    box.querySelector('#rsync')&&(box.querySelector('#rsync').onclick=async()=>{if(dirty){await save()}else{await refresh()}setState(state||'최신 상태예요')});
+    box.querySelector('#rleave')&&(box.querySelector('#rleave').onclick=()=>{if(!confirm('이 기기에서 기록방 연결을 끊을까요?\n클라우드 기록은 그대로 남고, 이 기기의 오답·노트 화면은 비워져요. 같은 이름을 다시 넣으면 돌아와요.'))return;leave();box.remove();toast('기록방에서 나왔어요')});
+  }
+  $('#roombtn').onclick=dialog;
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh()});
+  setInterval(refresh,60000);
+  async function auto(){const n=store(ROOM);if(n){setState('기록방 연결 중…');try{await open(n)}catch(e){setState('연결 실패: '+e.message,'err')}}}
+  return {open,queue,refresh,auto,get loaded(){return loaded},get name(){return name}};
+})();
+boot().then(()=>CLOUD.auto());
 </script>
 
 </body>
