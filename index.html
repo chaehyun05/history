@@ -156,6 +156,11 @@ h3{font-size:17px}
 .rlist{display:grid;gap:6px}
 .ritem{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);flex-wrap:wrap;text-align:left;width:100%}
 .ritem .ok{color:var(--cel);font-weight:700}.ritem .no{color:var(--seal);font-weight:700}
+.ask{border:1px dashed var(--line);border-radius:8px;padding:12px;display:grid;gap:8px;background:var(--sunk)}
+.ask textarea{width:100%;min-height:64px;resize:vertical;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;font-size:14px;background:var(--surface);color:var(--ink)}
+.ask .row{gap:6px}
+.ask .btn{padding:7px 12px;font-size:14px}
+.ask .hint{font-size:12px;color:var(--muted);margin:0;line-height:1.5}
 .empty{padding:28px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--r)}
 .wlist{display:grid;gap:8px}
 .witem{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:8px;flex-wrap:wrap}
@@ -293,6 +298,60 @@ function relatedMn(q,e){
   const scored=rows.map(r=>{const toks=r.k.replace(/[0-9·()~,./]/g,' ').split(/\s+/).filter(t=>t.length>=2);const sc=toks.reduce((a,t)=>a+(txt.includes(t)?t.length:0),0);return{r,sc}}).filter(x=>x.sc>=2).sort((a,b)=>b.sc-a.sc);
   return scored.slice(0,2).map(x=>x.r);
 }
+/* ---------- AI에게 물어보기: 질문을 만들어 복사하고 무료 AI 채팅 창을 열어요 ---------- */
+const AIS={chatgpt:{name:'ChatGPT',url:'https://chatgpt.com/',q:t=>'https://chatgpt.com/?q='+encodeURIComponent(t)},
+  gemini:{name:'Gemini',url:'https://gemini.google.com/app'},
+  claude:{name:'Claude',url:'https://claude.ai/new',q:t=>'https://claude.ai/new?q='+encodeURIComponent(t)}};
+function aiButtons(){return Object.entries(AIS).map(([k,v])=>`<button class="btn" data-ai="${k}">${v.name}</button>`).join('')+`<button class="btn ghost" data-ai="copy">복사만</button>`}
+function askBox(q,pick){
+  return `<div class="ask" data-ask="${q.id}" data-pick="${pick||0}"><div class="label">AI에게 물어보기</div>
+   <textarea placeholder="궁금한 점을 적어 보세요 (비워 두면 '왜 틀렸는지 + 핵심 개념'을 물어봐요)"></textarea>
+   <div class="row">${aiButtons()}${q.r!=='Y'?`<button class="btn ghost" data-qimg="${q.id}">문제 사진 저장</button>`:''}</div>
+   <p class="hint">누르면 문제·해설이 담긴 질문이 복사되고 무료 AI 채팅 창이 열려요. 내용이 비어 있으면 붙여넣기만 하면 돼요. AI는 문제 사진을 못 보니, 필요하면 '문제 사진 저장' 후 채팅에 첨부하세요. AI 답도 틀릴 수 있어요.</p></div>`;
+}
+function buildPrompt(q,pick,ask){
+  const e=getExp(q), L=[];
+  L.push('한국사능력검정시험(심화)을 공부하고 있어요. 아래 문제에 대해 질문할게요.','');
+  L.push(`[문제] ${qLabel(q)} (${PARTS[q.part]}${q.pts?`, ${q.pts}점`:''})`);
+  if(q.r==='Y'){const y=q.ys;L.push(y.q);if(y.src)L.push('자료: '+y.src);y.ch.forEach((c,i)=>L.push(`${CIR[i]} ${c}`))}
+  else L.push('※ 문제 사진은 첨부하지 못했어요. 아래 해설 내용으로 문제를 파악해 주세요.');
+  L.push('');
+  if(pick)L.push(`[내가 고른 답] ${CIR[pick-1]}`);
+  L.push(`[정답] ${CIR[q.ans-1]}`);
+  if(e){L.push(`[정답 근거] ${e.a}`,'[선지별 해설]',...e.c.map((c,i)=>`${CIR[i]} ${c}`));if(e.m)L.push(`[더 알아둘 것] ${e.m}`)}
+  const hx=HER.gi&&HER.gi[q.id];if(hx)L.push('[선지 속 문화유산 시대] '+hx.i.map(x=>`${x[0]} ${x[1]}: ${x[2]}`).join(' / '));
+  L.push('',`[질문] ${ask||(pick&&pick!==q.ans?'내가 고른 답이 왜 틀렸는지, 정답의 근거가 되는 핵심 개념을 시험에 잘 나오는 포인트 위주로 쉽게 설명해 주세요. 헷갈리기 쉬운 비슷한 개념도 비교해 주세요.':'이 문제의 핵심 개념을 시험에 잘 나오는 포인트 위주로 쉽게 정리해 주세요. 헷갈리기 쉬운 비슷한 개념도 비교해 주세요.')}`);
+  L.push('답변은 한국어로, 너무 길지 않게 부탁해요.');
+  return L.join('\n');
+}
+function freePrompt(ask,part){
+  return ['한국사능력검정시험(심화)을 공부하고 있어요.',part?`[시대] ${part}`:'','[질문/내가 틀린 내용] '+ask,'','시험에 잘 나오는 포인트 위주로 쉽게 설명해 주세요. 내가 잘못 알고 있는 부분이 있으면 바로잡아 주고, 헷갈리기 쉬운 비슷한 개념도 비교해 주세요. 답변은 한국어로, 너무 길지 않게 부탁해요.'].filter(Boolean).join('\n');
+}
+function copyText(t){
+  try{if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).catch(()=>fallbackCopy(t));return}}catch(e){}
+  fallbackCopy(t);
+}
+function fallbackCopy(t){const a=document.createElement('textarea');a.value=t;a.setAttribute('readonly','');a.style.cssText='position:fixed;top:-1000px;opacity:0';document.body.appendChild(a);a.select();try{document.execCommand('copy')}catch(e){}a.remove()}
+function sendToAI(kind,text){
+  copyText(text);
+  if(kind==='copy'){toast('질문을 복사했어요. 원하는 AI 채팅에 붙여넣으세요');return}
+  const ai=AIS[kind], url=ai.q&&encodeURIComponent(text).length<7000?ai.q(text):ai.url;
+  window.open(url,'_blank','noopener');
+  toast(url===ai.url?`질문을 복사했어요. ${ai.name} 입력창에 붙여넣기 하세요`:`${ai.name}에 질문을 넣었어요. 안 보이면 붙여넣기 하세요`);
+}
+async function saveQImg(id){
+  const [r,n]=id.split('-');const j=await loadImgs(r);const src=j&&j[n];if(!src){toast('문제 사진을 아직 불러오지 못했어요');return}
+  const im=new Image();im.src=src;await im.decode();const c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;c.getContext('2d').drawImage(im,0,0);
+  c.toBlob(b=>{const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`한능검_${r}회_${n}번.png`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast('문제 사진을 저장했어요')},'image/png');
+}
+document.addEventListener('click',e=>{
+  const qi=e.target.closest('[data-qimg]');if(qi){saveQImg(qi.dataset.qimg);return}
+  const b=e.target.closest('[data-ai]');if(!b)return;
+  const box=b.closest('[data-ask]');
+  if(box){const q=allQs().find(x=>x.id===box.dataset.ask);if(!q)return;sendToAI(b.dataset.ai,buildPrompt(q,+box.dataset.pick,box.querySelector('textarea').value.trim()));return}
+  const fb=b.closest('[data-free]');
+  if(fb){const t=fb.querySelector('textarea').value.trim();if(!t){toast('먼저 질문이나 틀린 내용을 적어 주세요');fb.querySelector('textarea').focus();return}const sel=fb.querySelector('select').value;sendToAI(b.dataset.ai,freePrompt(t,sel?PARTS[sel]:''))}
+});
 function herTable(q,hx){
   return `<div class="hx"><div class="label">문화유산 시대 정리</div><p class="lead">${esc(hx.t)}</p><table class="hxt"><tbody>${hx.i.map((x,i)=>`<tr class="${x[0]===CIR[q.ans-1]||(hx.i.length===5&&i+1===q.ans)?'ans':''}"><td class="n">${esc(x[0])}</td><td>${esc(x[1])}${x[3]?`<div class="nt">${esc(x[3])}</div>`:''}</td><td class="e">${esc(x[2])}</td></tr>`).join('')}</tbody></table></div>`;
 }
@@ -311,6 +370,7 @@ function renderExp(q,pick,view){
     if(e.m)h+=`<div class="more"><div class="label">더 알아둘 것</div><p>${esc(e.m)}</p></div>`;
     const hx=HER.gi[q.id]; if(hx)h+=herTable(q,hx);
     const rel=relatedMn(q,e); if(rel.length)h+=`<div class="related"><div class="label">연상 암기</div>${rel.map(mnRow).join('')}</div>`;
+    h+=askBox(q,view?0:pick);
   }else{
     const old=DATA[q.r].old[q.n-1];
     h+=`<div><div class="label">상세 해설 준비 중 · 기존 해설(참고)</div><p class="oldexp">${esc(old)||'—'}</p></div>`;
@@ -416,14 +476,19 @@ function viewWrong(){
   const fixed=Object.entries(WRONG).filter(([id,v])=>map[id]&&v.fixed);
   app.innerHTML=`<div class="stack"><h2>오답 노트</h2>
    <p class="muted" style="margin:0">틀린 문제가 자동으로 모여요. 다시 풀어서 맞히면 '극복한 문제'로 옮겨져요. 이 기기 브라우저에만 저장돼요.</p>
+   <div class="ask" data-free><div class="label">따로 공부하다 생긴 질문 · 오답 물어보기</div>
+    <textarea placeholder="예) 교재 문제에서 '정혜 공주 묘'를 고구려 양식이라고 했는데 왜 발해 문제에 나와요? / 내가 고른 답: 비변사 설치 → 정답: 훈련도감 설치, 왜 틀렸는지 궁금해요"></textarea>
+    <div class="row"><select aria-label="시대" style="padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px"><option value="">시대 선택(선택)</option>${Object.entries(PARTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>${aiButtons()}</div>
+    <p class="hint">적은 내용을 시험 공부용 질문으로 다듬어 복사하고 무료 AI 채팅 창을 열어요. 교재 문제 사진이 있으면 채팅에 같이 첨부하면 더 정확해요.</p></div>
    ${items.length?`<div class="row"><button class="btn primary" id="wa">오답 ${items.length}개 모두 다시 풀기</button><button class="btn" id="ws">섞어서 다시 풀기</button></div>
-   <div class="wlist">${items.map(([id,v])=>{const q=map[id];return `<div class="witem"><div><strong>${qLabel(q)}</strong> <span class="muted">· ${PARTS[q.part]} · 내 답 ${CIR[v.pick-1]} / 정답 ${CIR[q.ans-1]}</span></div><div class="row"><button class="btn" data-one="${id}">다시 풀기</button><button class="btn ghost" data-del="${id}">삭제</button></div></div>`}).join('')}</div>`:'<div class="empty">아직 틀린 문제가 없어요. 문제를 풀면 여기에 모여요.</div>'}
+   <div class="wlist">${items.map(([id,v])=>{const q=map[id];return `<div class="witem"><div><strong>${qLabel(q)}</strong> <span class="muted">· ${PARTS[q.part]} · 내 답 ${CIR[v.pick-1]} / 정답 ${CIR[q.ans-1]}</span></div><div class="row"><button class="btn" data-one="${id}">다시 풀기</button><button class="btn" data-wq="${id}">해설·AI 질문</button><button class="btn ghost" data-del="${id}">삭제</button></div></div>`}).join('')}</div>`:'<div class="empty">아직 틀린 문제가 없어요. 문제를 풀면 여기에 모여요.</div>'}
    ${fixed.length?`<details><summary class="muted">극복한 문제 ${fixed.length}개</summary><div class="wlist" style="margin-top:8px">${fixed.map(([id])=>`<div class="witem"><span>${qLabel(map[id])} · ${PARTS[map[id].part]}</span><button class="btn ghost" data-del="${id}">지우기</button></div>`).join('')}</div></details>`:''}
   </div>`;
   const list=items.map(([id])=>map[id]);
   $('#wa')&&($('#wa').onclick=()=>startQuiz(list,'오답 다시 풀기'));
   $('#ws')&&($('#ws').onclick=()=>startQuiz(shuffle(list),'오답 다시 풀기'));
-  app.onclick=e=>{const o=e.target.closest('[data-one]'),d=e.target.closest('[data-del]');
+  app.onclick=e=>{const o=e.target.closest('[data-one]'),d=e.target.closest('[data-del]'),w=e.target.closest('[data-wq]');
+    if(w){openQ(map[w.dataset.wq],WRONG[w.dataset.wq].pick);return}
     if(o){startQuiz([map[o.dataset.one]],'오답 다시 풀기')}
     if(d){delete WRONG[d.dataset.del];saveWrong();viewWrong()}};
 }
