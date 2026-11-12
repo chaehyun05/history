@@ -34,6 +34,28 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 nav.tabs{display:flex;gap:2px;overflow-x:auto}
 nav.tabs a{padding:8px 12px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:600;font-size:14px;white-space:nowrap}
 nav.tabs a[aria-current="page"]{color:var(--ink);background:var(--sunk)}
+@media (max-width:480px){nav.tabs{width:100%}nav.tabs a{padding:8px 9px;font-size:13.5px}}
+.nitems{display:grid;gap:10px}
+.ngrp{display:grid;gap:6px}
+.ngrp h3{font-size:15px;color:var(--muted);font-family:var(--f-body)}
+.nitem{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.nitem.off{opacity:.45}
+.nitem .tx{flex:1;white-space:pre-wrap;font-size:14px;line-height:1.55;min-width:0;overflow-wrap:anywhere}
+.nitem .ty{font-size:11px;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;background:var(--seal-soft,#f6e3e0);color:var(--seal)}
+.nitem .ty.c{background:var(--cel-soft);color:var(--cel)}
+.nitem .x{border:0;background:transparent;color:var(--muted);font-size:13px;padding:2px 4px;white-space:nowrap}
+.ninput{display:grid;gap:8px}
+.ninput textarea,.nsave textarea{width:100%;min-height:96px;resize:vertical;border:1px solid var(--line);border-radius:6px;padding:10px;font:inherit;font-size:14px;background:var(--surface);color:var(--ink)}
+.nsel{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:14px;line-height:1.45}
+.chk input{margin-top:3px}
+.pv{white-space:pre-wrap;font-size:13px;background:var(--sunk);border-radius:6px;padding:10px;max-height:260px;overflow:auto;margin:8px 0 0}
+.saved{border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.saved summary{padding:10px 12px;cursor:pointer;font-weight:600}
+.saved .md{padding:0 14px 12px;font-size:14px;line-height:1.65;overflow-wrap:anywhere}
+.saved .md h4{font-size:15px;margin:12px 0 4px;font-family:var(--f-display)}
+.saved .md p{margin:4px 0}
+.saved .md .li{padding-left:14px;text-indent:-10px;margin:2px 0}
 .wrap{padding-block:24px 64px}
 h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:-.01em}
 h1{font-size:30px;line-height:1.25}
@@ -179,6 +201,7 @@ h3{font-size:17px}
     <a href="#setup" data-nav="setup">문제 풀기</a>
     <a href="#study" data-nav="study">공부하기</a>
     <a href="#wrong" data-nav="wrong">오답 노트</a>
+    <a href="#note" data-nav="note">AI 정리</a>
   </nav>
 </div></header>
 <main class="wrap" id="app"><p class="muted">문제를 불러오는 중…</p></main>
@@ -235,6 +258,7 @@ function route(){
   if(h==='result')return S.result?viewResult():(location.hash='#setup');
   if(h==='study')return viewStudy();
   if(h==='wrong')return viewWrong();
+  if(h==='note')return viewNote();
   viewHome();
 }
 /* ---------- home ---------- */
@@ -251,6 +275,7 @@ function viewHome(){
     <a class="mode" href="#setup"><span class="seal c">問</span><strong>문제 풀기</strong><span>회차·시대·문항 수를 골라 섞어 풀기</span></a>
     <a class="mode" href="#study"><span class="seal g">學</span><strong>공부하기</strong><span>기출 속 문화유산 · 시대별 문화유산 · 연상 암기</span></a>
     <a class="mode" href="#wrong"><span class="seal">誤</span><strong>오답 노트</strong><span>틀린 문제 ${nw}개 다시 풀기</span></a>
+    <a class="mode" href="#note"><span class="seal c">整</span><strong>AI 정리 노트</strong><span>공부하다 틀린 문제·못 외운 개념을 모아 AI에게 시간 순서로 정리받기</span></a>
   </div></div>`;
 }
 /* ---------- setup ---------- */
@@ -349,6 +374,7 @@ document.addEventListener('click',e=>{
   const b=e.target.closest('[data-ai]');if(!b)return;
   const box=b.closest('[data-ask]');
   if(box){const q=allQs().find(x=>x.id===box.dataset.ask);if(!q)return;sendToAI(b.dataset.ai,buildPrompt(q,+box.dataset.pick,box.querySelector('textarea').value.trim()));return}
+  if(b.closest('[data-note]')){if(!NOTE.items.some(x=>!x.off)&&!noteAppWrong().length){toast('먼저 틀린 문제나 못 외운 개념을 넣어 주세요');return}sendToAI(b.dataset.ai,notePrompt());return}
   const fb=b.closest('[data-free]');
   if(fb){const t=fb.querySelector('textarea').value.trim();if(!t){toast('먼저 질문이나 틀린 내용을 적어 주세요');fb.querySelector('textarea').focus();return}const sel=fb.querySelector('select').value;sendToAI(b.dataset.ai,freePrompt(t,sel?PARTS[sel]:''))}
 });
@@ -491,6 +517,93 @@ function viewWrong(){
     if(w){openQ(map[w.dataset.wq],WRONG[w.dataset.wq].pick);return}
     if(o){startQuiz([map[o.dataset.one]],'오답 다시 풀기')}
     if(d){delete WRONG[d.dataset.del];saveWrong();viewWrong()}};
+}
+/* ---------- AI 정리 노트 ---------- */
+let NOTE=Object.assign({parts:[],items:[],saved:[],opt:{flow:1,key:1,mn:1,cmp:1,quiz:0},useWrong:1,ty:'w',p:0},store('hn_note')||{});
+function saveNote(){store('hn_note',NOTE)}
+function notePrompt(){
+  const L=[], inc=NOTE.items.filter(x=>!x.off);
+  const byP=x=>x.p||99;
+  const ws=inc.filter(x=>x.t==='w').sort((a,b)=>byP(a)-byP(b)), cs=inc.filter(x=>x.t==='c').sort((a,b)=>byP(a)-byP(b));
+  L.push('한국사능력검정시험(심화)을 준비하고 있어요.');
+  if(NOTE.parts.length)L.push('지금까지 공부한 범위: '+NOTE.parts.slice().sort((a,b)=>a-b).map(k=>PARTS[k]).join(', '));
+  L.push('아래는 내가 틀린 문제와 아직 못 외운 개념이에요.','');
+  const fmt=(x,i)=>`${i+1}. ${x.p?`(${PARTS[x.p]}) `:''}${x.txt.replace(/\n+/g,' / ')}`;
+  if(ws.length)L.push('[틀린 문제]',...ws.map(fmt),'');
+  if(cs.length)L.push('[못 외운 개념]',...cs.map(fmt),'');
+  const aw=noteAppWrong();
+  if(aw.length)L.push('[기출 연습에서 틀린 문제]',...aw.map(({q,v})=>{const e=getExp(q);return `- ${qLabel(q)} (${PARTS[q.part]}) 내 답 ${CIR[v.pick-1]} / 정답 ${CIR[q.ans-1]}${e?': '+e.a:''}`}),'');
+  const o=NOTE.opt, ask=[];
+  if(o.flow)ask.push('위 내용을 시간 순서(시대 → 나라 → 왕·사건 순)로 한 흐름이 되게 정리해 주세요. 표로 정리하면 좋아요.');
+  if(o.key)ask.push('각 항목마다 시험에 나오는 핵심 키워드를 짚어 주고, 틀린 문제는 왜 틀렸는지 한 줄로 알려 주세요.');
+  if(o.mn)ask.push('외우기 쉽게 재미있는 연상 문장이나 앞글자 암기법을 붙여 주세요.');
+  if(o.cmp)ask.push('헷갈리기 쉬운 것끼리(비슷한 나라·왕·제도·유물) 비교해 주세요.');
+  if(o.quiz)ask.push('마지막에 확인 문제 5개를 내 주세요. 정답은 맨 끝에 따로 모아 주세요.');
+  L.push('[부탁]',...ask.map((a,i)=>`${i+1}. ${a}`));
+  L.push('','공부한 범위를 넘는 내용은 꼭 필요할 때만 짧게 덧붙여 주세요. 한국어로, 제목·목록·표를 써서 보기 좋게 부탁해요.');
+  return L.join('\n');
+}
+function noteAppWrong(){
+  if(!NOTE.useWrong)return [];
+  const map=Object.fromEntries(allQs().map(q=>[q.id,q]));
+  return Object.entries(WRONG).filter(([id,v])=>map[id]&&!v.fixed&&(!NOTE.parts.length||NOTE.parts.includes(map[id].part))).map(([id,v])=>({q:map[id],v})).sort((a,b)=>a.q.part-b.q.part).slice(0,30);
+}
+function mdLite(t){
+  const lines=t.split('\n'), out=[];
+  const inl=x=>esc(x).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  for(let i=0;i<lines.length;i++){
+    const l=lines[i];
+    if(/^\s*\|/.test(l)){const rows=[];while(i<lines.length&&/^\s*\|/.test(lines[i])){rows.push(lines[i]);i++}i--;
+      const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const body=rows.filter(r=>!/^\s*\|?\s*:?-{2,}/.test(r)).map(cells);
+      out.push(`<div style="overflow-x:auto"><table class="hxt" style="margin:6px 0">${body.map((r,k)=>`<tr>${r.map(c=>k===0?`<td style="font-weight:700">${inl(c)}</td>`:`<td>${inl(c)}</td>`).join('')}</tr>`).join('')}</table></div>`);continue}
+    if(/^\s*#{1,6}\s/.test(l)){out.push(`<h4>${inl(l.replace(/^\s*#{1,6}\s/,''))}</h4>`);continue}
+    if(/^\s*([-*•]|\d+\.)\s/.test(l)){out.push(`<div class="li">${inl(l.replace(/^\s*[-*•]\s/,'• '))}</div>`);continue}
+    if(/^\s*-{3,}\s*$/.test(l))continue;
+    if(l.trim())out.push(`<p>${inl(l)}</p>`);
+  }
+  return out.join('');
+}
+function viewNote(){
+  const N=NOTE, inc=N.items.filter(x=>!x.off).length, aw=noteAppWrong();
+  const grp={};N.items.forEach((x,i)=>{(grp[x.p||0]=grp[x.p||0]||[]).push([x,i])});
+  const order=Object.keys(grp).map(Number).sort((a,b)=>(a||99)-(b||99));
+  const partSel=(v)=>`<option value="0" ${!v?'selected':''}>시대 모름/선택 안 함</option>${Object.entries(PARTS).map(([k,t])=>`<option value="${k}" ${+k===v?'selected':''}>${t}</option>`).join('')}`;
+  app.innerHTML=`<div class="stack"><h2>AI 정리 노트</h2>
+   <p class="muted" style="margin:0">교재·문제집으로 공부하다 틀린 문제와 못 외운 개념을 여기에 모아 두면, AI에게 한꺼번에 "시간 순서로 외우기 쉽게" 정리해 달라고 보낼 수 있어요. 모은 내용은 이 기기 브라우저에 저장돼요.</p>
+   <section class="card stack"><h3>1. 지금까지 공부한 범위</h3>
+    <div class="chips" id="np">${Object.entries(PARTS).filter(([k])=>k!=='10').map(([k,t])=>`<button class="chip" data-p="${k}" aria-pressed="${N.parts.includes(+k)}">${t}</button>`).join('')}</div></section>
+   <section class="card stack"><h3>2. 틀린 문제 · 못 외운 개념 넣기</h3>
+    <div class="ninput"><div class="row"><div class="seg" id="nty"><button data-v="w" aria-pressed="${N.ty==='w'}">틀린 문제</button><button data-v="c" aria-pressed="${N.ty==='c'}">못 외운 개념</button></div><select class="nsel" id="npp" aria-label="시대">${partSel(N.p)}</select></div>
+     <textarea id="ntx" placeholder="${N.ty==='w'?'예) 부여의 풍습을 묻는 문제에서 민며느리제를 골랐는데 틀림 → 민며느리제는 옥저, 부여는 영고·1책 12법':'예) 고구려 태조왕·고국천왕·소수림왕 업적 순서가 헷갈림'}"></textarea>
+     <div class="row" style="justify-content:space-between"><span class="muted" style="font-size:12px">빈 줄로 나누면 여러 개가 한 번에 들어가요</span><button class="btn primary" id="nadd">추가</button></div></div>
+    ${N.items.length?`<div class="nitems">${order.map(p=>`<div class="ngrp"><h3>${p?PARTS[p]:'시대 미정'}</h3>${grp[p].map(([x,i])=>`<div class="nitem ${x.off?'off':''}"><span class="ty ${x.t==='c'?'c':''}">${x.t==='w'?'틀린 문제':'개념'}</span><div class="tx">${esc(x.txt)}</div><button class="x" data-off="${i}" title="이번 정리에서 빼기/넣기">${x.off?'넣기':'빼기'}</button><button class="x" data-rm="${i}">삭제</button></div>`).join('')}</div>`).join('')}</div>`:'<div class="empty" style="padding:16px">아직 넣은 내용이 없어요.</div>'}
+    <label class="chk"><input type="checkbox" id="nuw" ${N.useWrong?'checked':''}><span>이 앱 오답 노트의 기출 오답도 같이 넣기 <span class="muted">(${aw.length}개${N.parts.length?', 공부한 범위만':''})</span></span></label></section>
+   <section class="card stack"><h3>3. 어떻게 정리할까요?</h3>
+    ${[['flow','시간 순서 흐름 정리(표)'],['key','핵심 키워드 + 왜 틀렸는지'],['mn','연상 문장·앞글자 암기법'],['cmp','헷갈리는 것끼리 비교'],['quiz','확인 문제 5개']].map(([k,t])=>`<label class="chk"><input type="checkbox" data-o="${k}" ${N.opt[k]?'checked':''}><span>${t}</span></label>`).join('')}
+    <div class="ask" data-note><div class="label">AI에게 정리 받기 · 넣은 내용 ${inc}개${aw.length?` + 기출 오답 ${aw.length}개`:''}</div><div class="row">${aiButtons()}</div>
+     <p class="hint">누르면 정리 요청 질문이 복사되고 무료 AI 채팅 창이 열려요. 입력창이 비어 있으면 붙여넣기 하세요. 교재 문제 사진이 있으면 채팅에 같이 첨부하면 더 정확해요.</p></div>
+    <details><summary class="muted">보낼 질문 미리보기</summary><pre class="pv">${esc(notePrompt())}</pre></details></section>
+   <section class="card stack nsave"><h3>4. AI 정리 보관함</h3>
+    <p class="muted" style="margin:0;font-size:13px">AI가 정리해 준 답을 복사해서 붙여넣고 저장하면, 여기서 언제든 다시 볼 수 있어요.</p>
+    <textarea id="nsv" placeholder="AI 답변을 여기에 붙여넣기"></textarea><div class="row" style="justify-content:flex-end"><button class="btn" id="nsvb">저장</button></div>
+    ${N.saved.length?N.saved.map((x,i)=>`<details class="saved" ${i===0?'open':''}><summary>${esc(x.title)}</summary><div class="md">${mdLite(x.body)}</div><div class="row" style="padding:0 12px 12px;justify-content:flex-end"><button class="btn ghost" data-cp="${i}">복사</button><button class="btn ghost" data-sd="${i}">삭제</button></div></details>`).join(''):''}</section>
+  </div>`;
+  $('#np').onclick=e=>{const b=e.target.closest('[data-p]');if(!b)return;const k=+b.dataset.p;N.parts=N.parts.includes(k)?N.parts.filter(x=>x!==k):[...N.parts,k];saveNote();viewNote()};
+  $('#nty').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;N.ty=b.dataset.v;saveNote();const t=$('#ntx').value;viewNote();$('#ntx').value=t};
+  $('#npp').onchange=e=>{N.p=+e.target.value;saveNote()};
+  $('#nadd').onclick=()=>{const parts=$('#ntx').value.split(/\n\s*\n/).map(x=>x.trim()).filter(Boolean);if(!parts.length){toast('내용을 적어 주세요');return}
+    parts.forEach(t=>N.items.push({t:N.ty,txt:t,p:N.p,at:Date.now()}));if(N.p&&!N.parts.includes(N.p))N.parts.push(N.p);saveNote();viewNote();toast(`${parts.length}개 추가했어요`)};
+  $('#nuw').onchange=e=>{N.useWrong=e.target.checked?1:0;saveNote();viewNote()};
+  app.querySelectorAll('[data-o]').forEach(c=>c.onchange=()=>{N.opt[c.dataset.o]=c.checked?1:0;saveNote();app.querySelector('.pv').textContent=notePrompt()});
+  $('#nsvb').onclick=()=>{const b=$('#nsv').value.trim();if(!b){toast('AI 답변을 붙여넣어 주세요');return}const d=new Date();
+    const title=`${d.getMonth()+1}/${d.getDate()} 정리 · ${N.parts.length?N.parts.slice().sort((a,c)=>a-c).map(k=>PARTS[k]).join(', '):'범위 미지정'}`;
+    N.saved.unshift({title,body:b,at:Date.now()});saveNote();viewNote();toast('보관함에 저장했어요')};
+  app.onclick=e=>{const o=e.target.closest('[data-off]'),r=e.target.closest('[data-rm]'),cp=e.target.closest('[data-cp]'),sd=e.target.closest('[data-sd]');
+    if(o){const x=N.items[+o.dataset.off];x.off=!x.off;saveNote();viewNote()}
+    if(r){N.items.splice(+r.dataset.rm,1);saveNote();viewNote()}
+    if(cp){copyText(N.saved[+cp.dataset.cp].body);toast('복사했어요')}
+    if(sd){N.saved.splice(+sd.dataset.sd,1);saveNote();viewNote()}};
 }
 /* ---------- study ---------- */
 function viewStudy(){
